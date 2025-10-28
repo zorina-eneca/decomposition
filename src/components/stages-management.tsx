@@ -1261,6 +1261,59 @@ export default function StagesManagement() {
     toast({ title: "Успешно", description: "Декомпозиции продублированы" });
   };
 
+  const copySelectedStagesToClipboard = async () => {
+    if (selectedStages.size === 0) {
+      toast({ title: "Ошибка", description: "Не выбраны этапы", variant: "destructive" });
+      return;
+    }
+    try {
+      let text = "";
+      stages.forEach((stage) => {
+        if (!selectedStages.has(stage.id)) return;
+        text += `Этап: ${stage.name}\nДата начала: ${stage.startDate}\nДата завершения: ${stage.endDate}\n\n`;
+        text += "Декомпозиции:\n";
+        text += "| Описание | Тип работ | Сложность | Ответственный | Часы | Прогресс | Статус | Дата |\n";
+        text += "|---|---|---|---|---|---|---|---|\n";
+        stage.decompositions.forEach((d) => {
+          text += `| ${d.description} | ${d.typeOfWork} | ${d.difficulty} | ${d.responsible} | ${d.plannedHours} | ${d.progress}% | ${d.status} | ${d.completionDate} |\n`;
+        });
+        text += "\n\n";
+      });
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Успешно", description: "Этапы скопированы в буфер обмена" });
+    } catch (e) {
+      toast({ title: "Ошибка", description: "Не удалось скопировать", variant: "destructive" });
+    }
+  };
+
+  const duplicateSelectedStages = () => {
+    if (selectedStages.size === 0) {
+      toast({ title: "Ошибка", description: "Не выбраны этапы", variant: "destructive" });
+      return;
+    }
+    setStages((prev) => {
+      const clones: Stage[] = [];
+      prev.forEach((stage) => {
+        if (!selectedStages.has(stage.id)) return;
+        const newStageId = `${Date.now()}-${Math.random()}`;
+        const newStage: Stage = {
+          id: newStageId,
+          name: `${stage.name} (Копия)`,
+          startDate: stage.startDate,
+          endDate: stage.endDate,
+          decompositions: stage.decompositions.map((d) => ({
+            ...d,
+            id: `${newStageId}-${Date.now()}-${Math.random()}`,
+          })),
+        };
+        clones.push(newStage);
+      });
+      return [...prev, ...clones];
+    });
+    setSelectedStages(new Set());
+    toast({ title: "Успешно", description: "Этапы продублированы" });
+  };
+
   const copySelectedDecompositionsToClipboard = async () => {
     if (selectedDecompositions.size === 0) {
       toast({ title: "Ошибка", description: "Не выбраны декомпозиции", variant: "destructive" });
@@ -1351,6 +1404,35 @@ export default function StagesManagement() {
                       <Plus className="mr-1.5 h-3.5 w-3.5" />Дублировать
                     </Button>
                     <Button variant="destructive" size="sm" className="h-8 text-xs" onClick={bulkDeleteDecompositions}>
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />Удалить
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <Card
+            className={`pointer-events-auto p-3 shadow-lg border-border/60 transition-all duration-200 ${
+              selectedStages.size > 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+            }`}
+            aria-hidden={!(selectedStages.size > 0)}
+          >
+            <div className="flex items-center gap-4">
+              {selectedStages.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Этапы:</span>
+                  <span className="text-sm font-medium">{selectedStages.size}</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" className="h-8 text-xs" onClick={copySelectedStagesToClipboard}>
+                      <Copy className="mr-1.5 h-3.5 w-3.5" />Копировать
+                    </Button>
+                    <Button size="sm" className="h-8 text-xs" onClick={duplicateSelectedStages}>
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />Дублировать
+                    </Button>
+                    <Button variant="destructive" size="sm" className="h-8 text-xs" onClick={bulkDeleteStages}>
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" />Удалить
                     </Button>
                   </div>
