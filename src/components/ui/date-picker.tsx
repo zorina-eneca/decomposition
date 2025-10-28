@@ -76,6 +76,7 @@ export function DatePicker({
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
   const gridRef = React.useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
+  const prevOpenRef = React.useRef<boolean>(false);
 
   // expose ref
   React.useEffect(() => {
@@ -129,9 +130,11 @@ export function DatePicker({
     };
   }, [open, updatePosition]);
 
-  // When calendar opens, align view to focused date and move focus into the grid for keyboard nav
+  // Keep dependency array stable; align only when popup just opened
   React.useEffect(() => {
     if (!open) return;
+    const justOpened = !prevOpenRef.current && open;
+    if (!justOpened) return;
     const d = parseISODate(focusedISO) ?? new Date();
     setViewYear(d.getFullYear());
     setViewMonth(d.getMonth());
@@ -140,6 +143,11 @@ export function DatePicker({
     }, 0);
     return () => window.clearTimeout(id);
   }, [open, focusedISO]);
+
+  // Track previous open state
+  React.useEffect(() => {
+    prevOpenRef.current = open;
+  }, [open]);
 
   const days = getMonthMatrix(viewYear, viewMonth);
   const todayISO = toISODate(new Date());

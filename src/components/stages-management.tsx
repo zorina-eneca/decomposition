@@ -268,10 +268,18 @@ function SortableStage({
             className="text-lg font-semibold bg-transparent border-none outline-none px-3 py-1 rounded-none focus:ring-0 focus:bg-transparent transition-colors"
           />
         </div>
-        <div className="flex gap-3 text-xs text-muted-foreground/70">
-          <span>{formatDateDisplay(stage.startDate)}</span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground/70">
+          <DatePicker
+            value={stage.startDate}
+            onChange={(val) => updateStage(stage.id, { startDate: val })}
+            triggerClassName="h-6 bg-transparent hover:bg-muted/30 px-2"
+          />
           <span className="text-muted-foreground/40">→</span>
-          <span>{formatDateDisplay(stage.endDate)}</span>
+          <DatePicker
+            value={stage.endDate}
+            onChange={(val) => updateStage(stage.id, { endDate: val })}
+            triggerClassName="h-6 bg-transparent hover:bg-muted/30 px-2"
+          />
         </div>
         <Button
           variant="ghost"
