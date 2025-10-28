@@ -160,6 +160,7 @@ function SortableStage({
   selectedStages,
   selectedDecompositions,
   toggleStageSelection,
+  toggleSelectAllInStage,
   toggleDecompositionSelection,
   deleteStage,
   deleteDecomposition,
@@ -175,6 +176,7 @@ function SortableStage({
   selectedStages: Set<string>;
   selectedDecompositions: Set<string>;
   toggleStageSelection: (id: string) => void;
+  toggleSelectAllInStage: (stageId: string) => void;
   toggleDecompositionSelection: (id: string) => void;
   deleteStage: (id: string) => void;
   deleteDecomposition: (stageId: string, decompId: string) => void;
@@ -189,6 +191,10 @@ function SortableStage({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id });
   const { toast } = useToast();
   const [isCopying, setIsCopying] = useState(false);
+
+  const stageDecompositionIds = stage.decompositions.map((d) => d.id);
+  const isAllSelectedInStage = stageDecompositionIds.length > 0 && stageDecompositionIds.every((id) => selectedDecompositions.has(id));
+  const hasAnySelectedInStage = stageDecompositionIds.some((id) => selectedDecompositions.has(id));
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -233,7 +239,7 @@ function SortableStage({
   };
 
   return (
-    <Card ref={setNodeRef} style={style} className="p-3 shadow-sm border-border/40">
+    <Card ref={setNodeRef} style={style} className="relative p-3 shadow-sm border-border/40">
       <div className="mb-2 flex items-center gap-3">
         <div
           {...attributes}
@@ -279,6 +285,23 @@ function SortableStage({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
+
+      {stage.decompositions.length > 0 && (
+        <div
+          className={`absolute top-2 right-2 transition-opacity ${
+            hasAnySelectedInStage ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => toggleSelectAllInStage(stage.id)}
+            className="h-8 px-3 text-xs"
+          >
+            {isAllSelectedInStage ? "Снять выбор в этапе" : "Выбрать все в этапе"}
+          </Button>
+        </div>
+      )}
 
 
       <DndContext
@@ -826,6 +849,7 @@ export default function StagesManagement() {
   const [isCopying, setIsCopying] = useState(false);
   const [focusedDecompositionId, setFocusedDecompositionId] = useState<string | null>(null);
   const [pendingNewDecomposition, setPendingNewDecomposition] = useState<{ stageId: string; decompId: string } | null>(null);
+  const [moveToStageId, setMoveToStageId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -1169,6 +1193,86 @@ export default function StagesManagement() {
     }
   };
 
+  const toggleSelectAllInStage = (stageId: string) => {
+    const stage = stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    const ids = stage.decompositions.map((d) => d.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedDecompositions.has(id));
+    setSelectedDecompositions((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const moveSelectedDecompositionsToStage = (targetStageId: string) => {
+    if (!targetStageId) return;
+    if (selectedDecompositions.size === 0) {
+      toast({ title: "Ошибка", description: "Не выбраны декомпозиции", variant: "destructive" });
+      return;
+    }
+    setStages((prev) => {
+      const toMove = new Map<string, Decomposition>();
+      prev.forEach((stage) => {
+        stage.decompositions.forEach((d) => {
+          if (selectedDecompositions.has(d.id)) toMove.set(d.id, d);
+        });
+      });
+      const next = prev.map((stage) => {
+        if (stage.id === targetStageId) {
+          return { ...stage, decompositions: [...stage.decompositions, ...Array.from(toMove.values())] };
+        }
+        return { ...stage, decompositions: stage.decompositions.filter((d) => !toMove.has(d.id)) };
+      });
+      return next;
+    });
+    setSelectedDecompositions(new Set());
+    setMoveToStageId(null);
+    toast({ title: "Успешно", description: "Декомпозиции перемещены" });
+  };
+
+  const duplicateSelectedDecompositions = () => {
+    if (selectedDecompositions.size === 0) {
+      toast({ title: "Ошибка", description: "Не выбраны декомпозиции", variant: "destructive" });
+      return;
+    }
+    setStages((prev) =>
+      prev.map((stage) => {
+        const toDuplicate = stage.decompositions.filter((d) => selectedDecompositions.has(d.id));
+        if (toDuplicate.length === 0) return stage;
+        const clones = toDuplicate.map((d) => ({ ...d, id: `${stage.id}-${Date.now()}-${Math.random()}` }));
+        return { ...stage, decompositions: [...stage.decompositions, ...clones] };
+      })
+    );
+    setSelectedDecompositions(new Set());
+    toast({ title: "Успешно", description: "Декомпозиции продублированы" });
+  };
+
+  const copySelectedDecompositionsToClipboard = async () => {
+    if (selectedDecompositions.size === 0) {
+      toast({ title: "Ошибка", description: "Не выбраны декомпозиции", variant: "destructive" });
+      return;
+    }
+    try {
+      let table = "| Название этапа | Описание | Тип работ | Сложность | Ответственный | Плановые часы | Статус | Дата |\n";
+      table += "|---|---|---|---|---|---|---|---|\n";
+      stages.forEach((stage) => {
+        stage.decompositions.forEach((d) => {
+          if (!selectedDecompositions.has(d.id)) return;
+          table += `| ${stage.name} | ${d.description} | ${d.typeOfWork} | ${d.difficulty} | ${d.responsible} | ${d.plannedHours} | ${d.status} | ${d.completionDate} |\n`;
+        });
+      });
+      await navigator.clipboard.writeText(table);
+      toast({ title: "Успешно", description: "Выбранные декомпозиции скопированы" });
+    } catch (e) {
+      toast({ title: "Ошибка", description: "Не удалось скопировать", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="mx-auto max-w-7xl">
@@ -1195,61 +1299,69 @@ export default function StagesManagement() {
           </div>
         </div>
 
-        {(selectedStages.size > 0 || selectedDecompositions.size > 0) && (
-          <Card className="mb-6 p-4 shadow-sm border-border/40">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                {selectedStages.size > 0 && (
-                  <span className="text-sm text-muted-foreground">
-                    Выбрано этапов: <span className="font-medium text-foreground">{selectedStages.size}</span>
-                  </span>
-                )}
-                {selectedDecompositions.size > 0 && (
-                  <span className="text-sm text-muted-foreground">
-                    Выбрано декомпозиций:{" "}
-                    <span className="font-medium text-foreground">{selectedDecompositions.size}</span>
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                {selectedStages.size > 0 && (
-                  <>
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <Card
+            className={`pointer-events-auto p-3 shadow-lg border-border/60 transition-all duration-200 ${
+              selectedStages.size > 0 || selectedDecompositions.size > 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+            }`}
+            aria-hidden={!(selectedStages.size > 0 || selectedDecompositions.size > 0)}
+          >
+            <div className="flex items-center gap-4">
+              {selectedStages.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Этапов:</span>
+                  <span className="text-sm font-medium">{selectedStages.size}</span>
+                  <Button variant="outline" size="sm" onClick={selectAllStages} className="h-8 text-xs">
+                    {selectedStages.size === stages.length ? "Снять выбор" : "Выбрать все"}
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={bulkDeleteStages} className="h-8 text-xs">
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />Удалить
+                  </Button>
+                </div>
+              )}
+              {selectedDecompositions.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Декомпозиции:</span>
+                  <span className="text-sm font-medium">{selectedDecompositions.size}</span>
+                  <Button variant="outline" size="sm" onClick={selectAllDecompositions} className="h-8 text-xs">
+                    {selectedDecompositions.size === stages.flatMap((s) => s.decompositions).length ? "Снять выбор" : "Выбрать все"}
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Select value={moveToStageId ?? ""} onValueChange={(v) => setMoveToStageId(v)}>
+                      <SelectTrigger className="h-8 text-xs w-[200px]">
+                        <SelectValue placeholder="Переместить в этап..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button
-                      variant="outline"
                       size="sm"
-                      onClick={selectAllStages}
-                      className="h-8 text-xs bg-transparent"
+                      className="h-8 text-xs"
+                      disabled={!moveToStageId || selectedDecompositions.size === 0}
+                      onClick={() => moveSelectedDecompositionsToStage(moveToStageId!)}
                     >
-                      {selectedStages.size === stages.length ? "Снять выбор" : "Выбрать все"}
+                      Переместить
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={bulkDeleteStages} className="h-8 text-xs">
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      Удалить этапы
+                    <Button variant="secondary" size="sm" className="h-8 text-xs" onClick={copySelectedDecompositionsToClipboard}>
+                      <Copy className="mr-1.5 h-3.5 w-3.5" />Копировать
                     </Button>
-                  </>
-                )}
-                {selectedDecompositions.size > 0 && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={selectAllDecompositions}
-                      className="h-8 text-xs bg-transparent"
-                    >
-                      {selectedDecompositions.size === stages.flatMap((s) => s.decompositions).length
-                        ? "Снять выбор"
-                        : "Выбрать все"}
+                    <Button size="sm" className="h-8 text-xs" onClick={duplicateSelectedDecompositions}>
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />Дублировать
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={bulkDeleteDecompositions} className="h-8 text-xs">
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      Удалить декомпозиции
+                    <Button variant="destructive" size="sm" className="h-8 text-xs" onClick={bulkDeleteDecompositions}>
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />Удалить
                     </Button>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
-        )}
+        </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleStageDragEnd}>
           <SortableContext items={stages.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -1261,6 +1373,7 @@ export default function StagesManagement() {
                   selectedStages={selectedStages}
                   selectedDecompositions={selectedDecompositions}
                   toggleStageSelection={toggleStageSelection}
+                  toggleSelectAllInStage={toggleSelectAllInStage}
                   toggleDecompositionSelection={toggleDecompositionSelection}
                   deleteStage={deleteStage}
                   deleteDecomposition={deleteDecomposition}
