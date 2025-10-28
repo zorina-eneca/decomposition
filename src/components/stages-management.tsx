@@ -239,7 +239,13 @@ function SortableStage({
   };
 
   return (
-    <Card ref={setNodeRef} style={style} className="relative p-3 shadow-sm border-border/40">
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`relative p-3 shadow-sm border-border/40 ${
+        selectedStages.has(stage.id) ? "ring-1 ring-primary/20 border-primary/40 bg-muted/40" : ""
+      }`}
+    >
       <div className="mb-2 flex items-center gap-3">
         <div
           {...attributes}
@@ -349,7 +355,9 @@ function SortableStage({
                     key={decomp.id}
                     decomposition={decomp}
                     stageId={stage.id}
-                    isSelected={selectedDecompositions.has(decomp.id)}
+                    isChecked={selectedStages.has(stage.id) || selectedDecompositions.has(decomp.id)}
+                    isHighlighted={selectedStages.has(stage.id) || selectedDecompositions.has(decomp.id)}
+                    selectionDisabled={selectedStages.has(stage.id)}
                     onToggleSelection={toggleDecompositionSelection}
                     onDelete={deleteDecomposition}
                     onUpdate={updateDecomposition}
@@ -381,7 +389,9 @@ function SortableStage({
 function SortableDecompositionRow({
   decomposition,
   stageId,
-  isSelected,
+  isChecked,
+  isHighlighted,
+  selectionDisabled,
   onToggleSelection,
   onDelete,
   onUpdate,
@@ -392,7 +402,9 @@ function SortableDecompositionRow({
 }: {
   decomposition: Decomposition;
   stageId: string;
-  isSelected: boolean;
+  isChecked: boolean;
+  isHighlighted: boolean;
+  selectionDisabled: boolean;
   onToggleSelection: (id: string) => void;
   onDelete: (stageId: string, decompId: string) => void;
   onUpdate: (stageId: string, decompId: string, updates: Partial<Decomposition>) => void;
@@ -472,7 +484,9 @@ function SortableDecompositionRow({
         rowRef.current = node as HTMLTableRowElement;
       }}
       style={style}
-      className="group border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors"
+      className={`group border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors ${
+        isHighlighted ? "bg-primary/5 hover:bg-primary/10" : ""
+      }`}
       onFocus={() => {
         // Считаем, что строка теперь активна и не должна удаляться моментально
         markInteracted();
@@ -499,9 +513,10 @@ function SortableDecompositionRow({
       <td className="py-1.5 px-2">
         <input
           type="checkbox"
-          checked={isSelected}
-          onChange={() => onToggleSelection(decomposition.id)}
+          checked={isChecked}
+          onChange={() => !selectionDisabled && onToggleSelection(decomposition.id)}
           className="h-4 w-4 rounded"
+          disabled={selectionDisabled}
         />
       </td>
       <td className="py-1.5 px-2">
@@ -925,25 +940,19 @@ export default function StagesManagement() {
 
   const toggleStageSelection = (stageId: string) => {
     setSelectedStages((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(stageId)) {
-        newSet.delete(stageId);
-      } else {
-        newSet.add(stageId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(stageId)) next.delete(stageId);
+      else next.add(stageId);
+      return next;
     });
   };
 
   const toggleDecompositionSelection = (decompId: string) => {
     setSelectedDecompositions((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(decompId)) {
-        newSet.delete(decompId);
-      } else {
-        newSet.add(decompId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(decompId)) next.delete(decompId);
+      else next.add(decompId);
+      return next;
     });
   };
 
@@ -1302,23 +1311,11 @@ export default function StagesManagement() {
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <Card
             className={`pointer-events-auto p-3 shadow-lg border-border/60 transition-all duration-200 ${
-              selectedStages.size > 0 || selectedDecompositions.size > 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+              selectedDecompositions.size > 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
             }`}
-            aria-hidden={!(selectedStages.size > 0 || selectedDecompositions.size > 0)}
+            aria-hidden={!(selectedDecompositions.size > 0)}
           >
             <div className="flex items-center gap-4">
-              {selectedStages.size > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Этапов:</span>
-                  <span className="text-sm font-medium">{selectedStages.size}</span>
-                  <Button variant="outline" size="sm" onClick={selectAllStages} className="h-8 text-xs">
-                    {selectedStages.size === stages.length ? "Снять выбор" : "Выбрать все"}
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={bulkDeleteStages} className="h-8 text-xs">
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />Удалить
-                  </Button>
-                </div>
-              )}
               {selectedDecompositions.size > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Декомпозиции:</span>
