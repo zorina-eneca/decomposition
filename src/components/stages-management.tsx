@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Trash2, Plus, Copy, ClipboardPaste, GripVertical } from "lucide-react";
@@ -451,6 +451,13 @@ function SortableDecompositionRow({
   const [openStatus, setOpenStatus] = useState(false);
   const lastClosedSelectRef = useRef<string | null>(null);
   const [interacted, setInteracted] = useState(false);
+  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = descriptionRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [decomposition.description]);
   
 
   const style = {
@@ -541,6 +548,7 @@ function SortableDecompositionRow({
       </td>
       <td className="py-1.5 px-2">
         <Textarea
+          ref={descriptionRef}
           value={decomposition.description}
           onChange={(e) => {
             onUpdate(stageId, decomposition.id, { description: (e.target as HTMLTextAreaElement).value });
@@ -1549,6 +1557,9 @@ export default function StagesManagement() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Этапы:</span>
                   <span className="text-sm font-medium">{selectedStages.size}</span>
+                  <Button variant="outline" size="sm" onClick={selectAllStages} className="h-8 text-xs">
+                    {selectedStages.size === stages.length ? "Снять выбор" : "Выбрать все этапы"}
+                  </Button>
                   <div className="flex items-center gap-2">
                     <Button variant="secondary" size="sm" className="h-8 text-xs" onClick={copySelectedStagesToClipboard}>
                       <Copy className="mr-1.5 h-3.5 w-3.5" />Копировать
