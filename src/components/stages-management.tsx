@@ -1074,6 +1074,14 @@ export default function StagesManagement() {
         const d = new Date(raw);
         return Number.isNaN(d.getTime()) ? today : d.toISOString().split("T")[0];
       };
+      const parseProgress = (val?: string) => {
+        const raw = (val ?? "").toString().trim();
+        if (!raw) return 0;
+        const m = raw.match(/(\d{1,3})/);
+        const n = m ? Number.parseInt(m[1], 10) : Number.NaN;
+        if (Number.isNaN(n)) return 0;
+        return Math.max(0, Math.min(100, n));
+      };
 
       // Соберём отдельные списки: строки этапов и декомпозиции
       const stageRows: Array<{ name: string; startDate?: string; endDate?: string }> = [];
@@ -1102,10 +1110,30 @@ export default function StagesManagement() {
         // Заголовки игнорируем
         if (isHeader(parts[0])) continue;
 
-        // Таблица декомпозиций (8+ колонок)
-        if (parts.length >= 8) {
-          const [stageName, description, typeOfWork, difficulty, responsible, plannedHours, status, completionDate] =
-            parts;
+        // Таблица декомпозиций: поддержка 9 колонок (с Прогрессом) и обратной совместимости на 8 колонок
+        if (parts.length >= 9) {
+          const [stageName, description, typeOfWork, difficulty, responsible, plannedHours, progressStr, status, completionDate] = parts;
+
+          if (!stageMap.has(stageName)) {
+            stageMap.set(stageName, { stage: { name: stageName }, decompositions: [] });
+          }
+
+          const decomposition: Decomposition = {
+            id: `${Date.now()}-${Math.random()}`,
+            description,
+            typeOfWork,
+            difficulty,
+            responsible,
+            plannedHours: Number.parseInt(plannedHours ?? "") || 0,
+            progress: parseProgress(progressStr),
+            status,
+            completionDate: normalizeDate(completionDate),
+          };
+
+          stageMap.get(stageName)!.decompositions.push(decomposition);
+          continue;
+        } else if (parts.length >= 8) {
+          const [stageName, description, typeOfWork, difficulty, responsible, plannedHours, status, completionDate] = parts;
 
           if (!stageMap.has(stageName)) {
             stageMap.set(stageName, { stage: { name: stageName }, decompositions: [] });
@@ -1575,14 +1603,14 @@ export default function StagesManagement() {
               <DialogTitle>Вставить данные</DialogTitle>
               <DialogDescription className="text-sm">
                 Вставьте табличные данные в формате: Название этапа | Описание | Тип работ | Сложность | Ответственный |
-                Плановые часы | Статус | Дата
+                Плановые часы | Прогресс | Статус | Дата
               </DialogDescription>
             </DialogHeader>
             <Textarea
               value={pasteText}
               onChange={(e) => setPasteText((e.target as HTMLTextAreaElement).value)}
               placeholder="Вставьте данные здесь..."
-              className="min-h-[300px] font-mono text-sm"
+              className="min-h-[300px] font-sans text-sm border border-border/60"
             />
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowPasteDialog(false)}>
