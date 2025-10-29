@@ -192,6 +192,18 @@ function SortableStage({
   const { toast } = useToast();
   const [isCopying, setIsCopying] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
+  const stageNameRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const adjustStageNameHeight = () => {
+    const el = stageNameRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    adjustStageNameHeight();
+  }, [stage.name]);
 
   const stageDecompositionIds = stage.decompositions.map((d) => d.id);
   const isAllSelectedInStage = stageDecompositionIds.length > 0 && stageDecompositionIds.every((id) => selectedDecompositions.has(id));
@@ -262,14 +274,18 @@ function SortableStage({
           className="h-4 w-4 rounded"
         />
         <div className="flex-1">
-          <input
-            type="text"
+          <Textarea
+            ref={stageNameRef}
             value={stage.name}
-            onChange={(e) => updateStage(stage.id, { name: (e.target as HTMLInputElement).value })}
+            onChange={(e) => {
+              updateStage(stage.id, { name: (e.target as HTMLTextAreaElement).value });
+            }}
+            onInput={adjustStageNameHeight}
             onFocus={() => setIsEditingName(true)}
             onBlur={() => setIsEditingName(false)}
             placeholder="Новый этап"
-            className={`text-lg font-semibold border-none outline-none px-3 py-1 rounded-md transition-colors focus:outline-none focus:ring-0 ${
+            rows={1}
+            className={`text-lg font-semibold border-0 outline-none px-3 py-1 rounded-md transition-colors focus:outline-none focus:ring-0 resize-none overflow-hidden min-h-9 ${
               isEditingName
                 ? "bg-primary/5 ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
                 : "bg-transparent hover:bg-muted/40"
