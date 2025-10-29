@@ -314,7 +314,7 @@ function SortableStage({
 
       {stage.decompositions.length > 0 && (
         <div
-          className={`absolute top-2 right-2 transition-opacity ${
+          className={`absolute top-2 left-2 transition-opacity ${
             hasAnySelectedInStage ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
@@ -892,7 +892,7 @@ export default function StagesManagement() {
   const [isCopying, setIsCopying] = useState(false);
   const [focusedDecompositionId, setFocusedDecompositionId] = useState<string | null>(null);
   const [pendingNewDecomposition, setPendingNewDecomposition] = useState<{ stageId: string; decompId: string } | null>(null);
-  const [moveToStageId, setMoveToStageId] = useState<string | null>(null);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -1372,7 +1372,6 @@ export default function StagesManagement() {
       return next;
     });
     setSelectedDecompositions(new Set());
-    setMoveToStageId(null);
     toast({ title: "Успешно", description: "Декомпозиции перемещены" });
   };
 
@@ -1392,6 +1391,10 @@ export default function StagesManagement() {
     setSelectedDecompositions(new Set());
     toast({ title: "Успешно", description: "Декомпозиции продублированы" });
   };
+
+  const eligibleTargetStages = stages.filter((stage) =>
+    stage.decompositions.every((d) => !selectedDecompositions.has(d.id))
+  );
 
   const copySelectedStagesToClipboard = async () => {
     if (selectedStages.size === 0) {
@@ -1509,23 +1512,11 @@ export default function StagesManagement() {
                     {selectedDecompositions.size === stages.flatMap((s) => s.decompositions).length ? "Снять выбор" : "Выбрать все"}
                   </Button>
                   <div className="flex items-center gap-2">
-                    <Select value={moveToStageId ?? ""} onValueChange={(v) => setMoveToStageId(v)}>
-                      <SelectTrigger className="h-8 text-xs w-[200px]">
-                        <SelectValue placeholder="Переместить в этап..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stages.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     <Button
                       size="sm"
                       className="h-8 text-xs"
-                      disabled={!moveToStageId || selectedDecompositions.size === 0}
-                      onClick={() => moveSelectedDecompositionsToStage(moveToStageId!)}
+                      disabled={selectedDecompositions.size === 0}
+                      onClick={() => setShowMoveDialog(true)}
                     >
                       Переместить
                     </Button>
@@ -1628,6 +1619,41 @@ export default function StagesManagement() {
                 Отмена
               </Button>
               <Button onClick={handlePaste}>Импортировать</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showMoveDialog} onOpenChange={setShowMoveDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Переместить в этап</DialogTitle>
+              <DialogDescription className="text-sm">
+                Выберите этап, в который перенести выбранные декомпозиции
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
+              {eligibleTargetStages.length > 0 ? (
+                eligibleTargetStages.map((s) => (
+                  <Button
+                    key={s.id}
+                    variant="outline"
+                    className="justify-start"
+                    onClick={() => {
+                      moveSelectedDecompositionsToStage(s.id);
+                      setShowMoveDialog(false);
+                    }}
+                  >
+                    {s.name}
+                  </Button>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">Нет доступных этапов</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowMoveDialog(false)}>
+                Отмена
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
