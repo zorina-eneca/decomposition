@@ -9,6 +9,8 @@ type DatePickerProps = {
   onFocus?: (e: React.FocusEvent<HTMLButtonElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   triggerRef?: React.Ref<HTMLButtonElement>;
+  openOnToday?: boolean;
+  plainTrigger?: boolean; // для чёрного (plain) вида кнопки-триггера
 };
 
 const RU_MONTHS = [
@@ -65,6 +67,8 @@ export function DatePicker({
   onFocus,
   onKeyDown,
   triggerRef,
+  openOnToday,
+  plainTrigger,
 }: DatePickerProps) {
   const selected = parseISODate(value) ?? new Date();
   const [open, setOpen] = React.useState(false);
@@ -85,8 +89,7 @@ export function DatePicker({
       triggerRef(triggerElRef.current);
     } else {
       try {
-        // @ts-expect-error: ref is mutable in runtime
-        triggerRef.current = triggerElRef.current;
+        (triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = triggerElRef.current;
       } catch {}
     }
   }, [triggerRef]);
@@ -166,6 +169,14 @@ export function DatePicker({
     setViewMonth(d.getMonth());
   };
 
+  const goToday = () => {
+    const now = new Date();
+    setViewYear(now.getFullYear());
+    setViewMonth(now.getMonth());
+    setFocusedISO(toISODate(now));
+    gridRef.current?.focus();
+  };
+
   const selectDate = (d: Date) => {
     onChange(toISODate(d));
     setOpen(false);
@@ -191,7 +202,8 @@ export function DatePicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         className={cn(
-          "inline-flex items-center justify-between gap-2 rounded-full border-0 bg-muted/60 px-3 text-xs h-6 shadow-none hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:ring-offset-2",
+          "inline-flex items-center justify-between gap-2 rounded-full border-0 px-3 text-xs h-6 shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:ring-offset-2",
+          plainTrigger ? "bg-transparent hover:bg-muted/30 text-foreground" : "bg-muted/60 hover:bg-muted/80",
           triggerClassName
         )}
         onFocus={(e) => {
@@ -225,7 +237,7 @@ export function DatePicker({
         }}
       >
         <span className="tabular-nums select-none">{formatDisplay(value)}</span>
-        <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+        <CalendarIcon className={cn("h-3.5 w-3.5", plainTrigger ? "text-foreground" : "text-muted-foreground")} />
       </button>
 
       {open && pos && (
@@ -235,23 +247,36 @@ export function DatePicker({
           style={{ top: pos.top, left: pos.left }}
         >
           <div className="flex items-center justify-between px-1 py-1">
-            <button
-              type="button"
-              className="h-6 w-6 inline-flex items-center justify-center rounded-full hover:bg-muted"
-              onClick={goPrevMonth}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="h-6 w-6 inline-flex items-center justify-center rounded-full hover:bg-muted"
+                onClick={goPrevMonth}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="h-6 w-6 inline-flex items-center justify-center rounded-full hover:bg-muted"
+                onClick={goToday}
+                aria-label="Сегодня"
+                title="Сегодня"
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <div className="text-[13px] font-medium">
               {RU_MONTHS[viewMonth]} {viewYear}
             </div>
-            <button
-              type="button"
-              className="h-6 w-6 inline-flex items-center justify-center rounded-full hover:bg-muted"
-              onClick={goNextMonth}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center">
+              <button
+                type="button"
+                className="h-6 w-6 inline-flex items-center justify-center rounded-full hover:bg-muted"
+                onClick={goNextMonth}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-7 gap-[3px] px-1">
@@ -308,6 +333,7 @@ export function DatePicker({
               const isToday = iso === todayISO;
               const isOut = !isCurrentMonth(d);
               const isFocus = iso === focusedISO;
+            const isPast = iso < todayISO;
 
               return (
                 <button
@@ -315,7 +341,7 @@ export function DatePicker({
                   type="button"
                   className={cn(
                     "h-7 w-7 rounded-full text-[11px] inline-flex items-center justify-center transition-colors",
-                    isOut && "text-muted-foreground/50",
+                  isPast ? "text-muted-foreground/50" : "text-foreground",
                     !isSel && !isOut && "hover:bg-muted",
                     isSel && "bg-primary text-primary-foreground hover:bg-primary",
                     !isSel && isToday && "ring-1 ring-primary",

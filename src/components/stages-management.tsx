@@ -191,6 +191,7 @@ function SortableStage({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id });
   const { toast } = useToast();
   const [isCopying, setIsCopying] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
 
   const stageDecompositionIds = stage.decompositions.map((d) => d.id);
   const isAllSelectedInStage = stageDecompositionIds.length > 0 && stageDecompositionIds.every((id) => selectedDecompositions.has(id));
@@ -265,20 +266,31 @@ function SortableStage({
             type="text"
             value={stage.name}
             onChange={(e) => updateStage(stage.id, { name: (e.target as HTMLInputElement).value })}
-            className="text-lg font-semibold bg-transparent border-none outline-none px-3 py-1 rounded-none focus:ring-0 focus:bg-transparent transition-colors"
+            onFocus={() => setIsEditingName(true)}
+            onBlur={() => setIsEditingName(false)}
+            placeholder="Новый этап"
+            className={`text-lg font-semibold border-none outline-none px-3 py-1 rounded-md transition-colors focus:outline-none focus:ring-0 ${
+              isEditingName
+                ? "bg-primary/5 ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
+                : "bg-transparent hover:bg-muted/40"
+            }`}
           />
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground/70">
           <DatePicker
             value={stage.startDate}
             onChange={(val) => updateStage(stage.id, { startDate: val })}
-            triggerClassName="h-6 bg-transparent hover:bg-muted/30 px-2"
+            triggerClassName="h-6 px-2"
+            openOnToday
+            plainTrigger
           />
           <span className="text-muted-foreground/40">→</span>
           <DatePicker
             value={stage.endDate}
             onChange={(val) => updateStage(stage.id, { endDate: val })}
-            triggerClassName="h-6 bg-transparent hover:bg-muted/30 px-2"
+            triggerClassName="h-6 px-2"
+            openOnToday
+            plainTrigger
           />
         </div>
         <Button
@@ -902,6 +914,15 @@ export default function StagesManagement() {
   };
 
   const addDecomposition = (stageId: string, opts?: { pending?: boolean }) => {
+    // Если автосоздание (pending) и уже есть пустая строка в этапе — не создавать новую
+    const stageRef = stages.find((s) => s.id === stageId);
+    if (opts?.pending && stageRef) {
+      const hasEmpty = stageRef.decompositions.some((d) => (d.description ?? "").trim() === "");
+      if (hasEmpty) {
+        return;
+      }
+    }
+
     const newId = `${stageId}-${Date.now()}`;
     const newDecomposition: Decomposition = {
       id: newId,
@@ -1034,26 +1055,60 @@ export default function StagesManagement() {
     }
 
     try {
-      const lines = pasteText.trim().split("\n");
-      const dataLines = lines.filter((line) => line.trim() && !line.includes("Название этапа"));
+      const lines = pasteText.trim().split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
 
+      const today = new Date().toISOString().split("T")[0];
+      const isSeparatorRow = (parts: string[]) => parts.length > 0 && parts.every((p) => /^-+$/.test(p));
+      const isHeader = (first: string) => /название\s+этапа/i.test(first);
+      const normalizeDate = (val?: string) => {
+        const raw = (val ?? "").trim();
+        if (!raw) return today;
+        // dd.mm.yyyy или d.m.yyyy (или с / -)
+        const m = raw.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+        if (m) {
+          const dd = m[1].padStart(2, "0");
+          const mm = m[2].padStart(2, "0");
+          const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+          return `${yyyy}-${mm}-${dd}`;
+        }
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? today : d.toISOString().split("T")[0];
+      };
+
+      // Соберём отдельные списки: строки этапов и декомпозиции
+      const stageRows: Array<{ name: string; startDate?: string; endDate?: string }> = [];
       const stageMap = new Map<string, { stage: Partial<Stage>; decompositions: Decomposition[] }>();
 
-      dataLines.forEach((line) => {
-        const parts = line
-          .split("|")
-          .map((p) => p.trim())
-          .filter((p) => p);
+      const splitRow = (line: string): string[] => {
+        if (line.includes("|")) {
+          const arr = line.split("|").map((p) => p.trim());
+          // убрать пустые ячейки по краям из-за ведущего/замыкающего |
+          if (arr.length && arr[0] === "") arr.shift();
+          if (arr.length && arr[arr.length - 1] === "") arr.pop();
+          return arr;
+        }
+        if (line.includes("\t")) {
+          return line.split("\t").map((p) => p.trim());
+        }
+        return line.split(";").map((p) => p.trim());
+      };
 
+      for (const line of lines) {
+        const parts = splitRow(line);
+
+        if (parts.length === 0) continue;
+        if (isSeparatorRow(parts)) continue;
+
+        // Заголовки игнорируем
+        if (isHeader(parts[0])) continue;
+
+        // Таблица декомпозиций (8+ колонок)
         if (parts.length >= 8) {
           const [stageName, description, typeOfWork, difficulty, responsible, plannedHours, status, completionDate] =
             parts;
 
           if (!stageMap.has(stageName)) {
-            stageMap.set(stageName, {
-              stage: { name: stageName },
-              decompositions: [],
-            });
+            stageMap.set(stageName, { stage: { name: stageName }, decompositions: [] });
           }
 
           const decomposition: Decomposition = {
@@ -1062,42 +1117,75 @@ export default function StagesManagement() {
             typeOfWork,
             difficulty,
             responsible,
-            plannedHours: Number.parseInt(plannedHours) || 0,
+            plannedHours: Number.parseInt(plannedHours ?? "") || 0,
             progress: 0,
             status,
-            completionDate,
+            completionDate: normalizeDate(completionDate),
           };
 
           stageMap.get(stageName)!.decompositions.push(decomposition);
+          continue;
         }
-      });
+
+        // Таблица этапов (3+ колонки)
+        if (parts.length >= 3) {
+          const [stageName, startDate, endDate] = parts;
+          stageRows.push({ name: stageName, startDate: normalizeDate(startDate), endDate: normalizeDate(endDate) });
+          continue;
+        }
+      }
 
       const newStages = [...stages];
+      let createdStagesCount = 0;
+      let importedDecompsCount = 0;
 
+      // Сначала создадим/обновим этапы по строкам этапов
+      for (const row of stageRows) {
+        const existing = newStages.find((s) => s.name === row.name);
+        if (existing) {
+          if (row.startDate) existing.startDate = row.startDate;
+          if (row.endDate) existing.endDate = row.endDate;
+        } else {
+          newStages.push({
+            id: Date.now().toString() + Math.random(),
+            name: row.name,
+            startDate: row.startDate ?? today,
+            endDate: row.endDate ?? today,
+            decompositions: [],
+          });
+          createdStagesCount += 1;
+        }
+      }
+
+      // Затем добавим декомпозиции и создадим этапы при необходимости
       stageMap.forEach((data, stageName) => {
         const existingStage = newStages.find((s) => s.name === stageName);
-
         if (existingStage) {
           existingStage.decompositions.push(...data.decompositions);
         } else {
-          const newStage: Stage = {
+          newStages.push({
             id: Date.now().toString() + Math.random(),
             name: stageName,
-            startDate: new Date().toISOString().split("T")[0],
-            endDate: new Date().toISOString().split("T")[0],
+            startDate: today,
+            endDate: today,
             decompositions: data.decompositions,
-          };
-          newStages.push(newStage);
+          });
+          createdStagesCount += 1;
         }
+        importedDecompsCount += data.decompositions.length;
       });
 
       setStages(newStages);
       setPasteText("");
       setShowPasteDialog(false);
 
+      const descParts = [] as string[];
+      if (importedDecompsCount > 0) descParts.push(`декомпозиций: ${importedDecompsCount}`);
+      if (createdStagesCount > 0 || stageRows.length > 0) descParts.push(`этапов создано/обновлено: ${createdStagesCount}`);
+
       toast({
         title: "Успешно",
-        description: `Импортировано ${dataLines.length} декомпозиций`,
+        description: descParts.length > 0 ? `Импортировано ${descParts.join(", ")}` : "Данные обработаны",
       });
     } catch (error) {
       toast({
